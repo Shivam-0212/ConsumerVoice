@@ -46,6 +46,19 @@ else
     echo "[3/6] Sentiment baseline model verified."
 fi
 
+# 3b. Verify DistilBERT transformer weights and resolve broken symlinks
+if [ ! -f "backend/saved_models/distilbert_sentiment/config.json" ]; then
+    if [ -f "ConsumerVoice_Private/trained_models/distilbert_sentiment/config.json" ]; then
+        echo "Restoring DistilBERT transformer weights from ConsumerVoice_Private..."
+        rm -rf backend/saved_models/distilbert_sentiment
+        cp -r ConsumerVoice_Private/trained_models/distilbert_sentiment backend/saved_models/distilbert_sentiment
+    elif [ -f "../ConsumerVoice_Private/trained_models/distilbert_sentiment/config.json" ]; then
+        echo "Restoring DistilBERT transformer weights from ConsumerVoice_Private..."
+        rm -rf backend/saved_models/distilbert_sentiment
+        cp -r ../ConsumerVoice_Private/trained_models/distilbert_sentiment backend/saved_models/distilbert_sentiment
+    fi
+fi
+
 # 4. Check and seed SQLite database
 if [ ! -f "backend/consumervoice.db" ]; then
     echo "[4/6] Initializing and seeding SQLite database with real reviews..."
