@@ -7,6 +7,7 @@ router = APIRouter(tags=["health"])
 
 
 @router.get("/health")
+@router.head("/health")
 def health_check():
     """Verify application, database, and model availability."""
     status = sentiment_service.get_model_status()

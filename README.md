@@ -10,6 +10,17 @@
 
 ---
 
+## 🌐 Live Production Deployment
+
+| Service Component | Host Platform | Production URL |
+| :--- | :--- | :--- |
+| **Frontend Web Application** | **Vercel** | [https://consumer-voice-rose.vercel.app](https://consumer-voice-rose.vercel.app) |
+| **Backend API Service** | **Render** | [https://consumervoice-api.onrender.com](https://consumervoice-api.onrender.com) |
+| **Interactive API Docs (Swagger)** | **Render** | [https://consumervoice-api.onrender.com/docs](https://consumervoice-api.onrender.com/docs) |
+| **Backend Health Endpoint** | **Render** | [https://consumervoice-api.onrender.com/api/health](https://consumervoice-api.onrender.com/api/health) |
+
+---
+
 ## 1. Key Capabilities
 
 1. **Dual Sentiment Classification Engines**:

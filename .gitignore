@@ -11,8 +11,12 @@ __pycache__/
 .pytest_cache/
 
 # Node
+node_modules
 node_modules/
+frontend/node_modules
+dist
 dist/
+build
 build/
 
 # macOS
@@ -36,6 +40,7 @@ build/
 *.pth
 *.pt
 *.bin
+backend/saved_models/distilbert_sentiment
 backend/saved_models/distilbert_sentiment/
 
 # Dataset files

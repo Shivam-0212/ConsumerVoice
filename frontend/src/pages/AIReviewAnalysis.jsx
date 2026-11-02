@@ -320,9 +320,15 @@ export default function AIReviewAnalysis() {
                       <span className="text-amber-400">Neutral</span>
                     </>
                   )}
+                  {result.sentiment === 'unavailable' && (
+                    <>
+                      <AlertTriangle className="w-6 h-6 text-amber-400" />
+                      <span className="text-amber-400 text-lg">Weights Omitted</span>
+                    </>
+                  )}
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1 font-mono">
-                  Confidence: <strong className="text-white">{(result.confidence * 100).toFixed(1)}%</strong>
+                  Confidence: <strong className="text-white">{result.confidence > 0 ? `${(result.confidence * 100).toFixed(1)}%` : 'GPU / High-RAM Required'}</strong>
                 </div>
               </div>
 

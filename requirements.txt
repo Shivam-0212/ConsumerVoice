@@ -1,0 +1,2 @@
+# ConsumerVoice Root Requirements Pointer
+-r backend/requirements.txt

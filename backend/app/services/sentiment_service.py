@@ -40,13 +40,34 @@ class SentimentService:
         self._load_baseline()
         self._check_transformer_checkpoint()
 
+    def _resolve_path(self, path: Path) -> Path:
+        """Resolve path against known application roots if relative doesn't exist."""
+        if path.exists():
+            return path
+        try:
+            from backend.app.core.config import settings
+
+            candidates = [
+                settings.SAVED_MODELS_DIR / path.name,
+                settings.SAVED_MODELS_DIR / path,
+                Path(__file__).resolve().parent.parent.parent / "saved_models" / path.name,
+            ]
+            for c in candidates:
+                if c.exists():
+                    return c
+        except Exception:
+            pass
+        return path
+
     def _load_baseline(self):
         """Load scikit-learn TF-IDF + Logistic Regression pipeline."""
-        if self.baseline_path.exists():
+        target = self._resolve_path(self.baseline_path)
+        if target.exists():
             try:
-                self.baseline_model = joblib.load(self.baseline_path)
+                self.baseline_path = target
+                self.baseline_model = joblib.load(target)
                 self.explainer.set_pipeline(self.baseline_model)
-                logger.info(f"Loaded sentiment baseline model from {self.baseline_path}")
+                logger.info(f"Loaded sentiment baseline model from {target}")
             except Exception as e:
                 logger.error(f"Failed loading sentiment baseline model: {e}")
         else:
@@ -54,11 +75,13 @@ class SentimentService:
 
     def _check_transformer_checkpoint(self) -> bool:
         """Check if trained DistilBERT weights are present and loadable on CPU."""
-        if self.transformer_dir.exists() and (self.transformer_dir / "config.json").exists():
+        target_dir = self._resolve_path(self.transformer_dir)
+        if target_dir.exists() and (target_dir / "config.json").exists():
             try:
                 import torch
                 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
+                self.transformer_dir = target_dir
                 logger.info(f"Loading fine-tuned DistilBERT from {self.transformer_dir} on CPU...")
                 self.transformer_tokenizer = AutoTokenizer.from_pretrained(str(self.transformer_dir))
                 self.transformer_model = AutoModelForSequenceClassification.from_pretrained(str(self.transformer_dir))
@@ -81,9 +104,10 @@ class SentimentService:
     def get_model_status(self) -> Dict[str, Any]:
         """Return status of all models and active inference model."""
         eval_data = {}
-        if self.evaluation_path.exists():
+        eval_path = self._resolve_path(self.evaluation_path)
+        if eval_path.exists():
             try:
-                with open(self.evaluation_path, "r", encoding="utf-8") as f:
+                with open(eval_path, "r", encoding="utf-8") as f:
                     eval_data = json.load(f)
             except Exception as e:
                 logger.error(f"Error reading evaluation data: {e}")
@@ -201,11 +225,12 @@ class SentimentService:
                 "probabilities": {"negative": 0.333, "neutral": 0.334, "positive": 0.333},
                 "active_model": "fallback_prior",
                 "explanation": {
+                    "method": "none",
                     "available": False,
-                    "summary": "Model checkpoint not found.",
+                    "summary": "Baseline model weights not found in this environment.",
                     "positive_contributors": [],
                     "negative_contributors": [],
-                    "disclaimer": "No model loaded.",
+                    "disclaimer": "No model loaded. Production deployment requires asset configuration.",
                 },
             }
 
@@ -248,6 +273,7 @@ class SentimentService:
                 "probabilities": {"negative": 0.333, "neutral": 0.334, "positive": 0.333},
                 "active_model": target_model,
                 "explanation": {
+                    "method": "none",
                     "available": False,
                     "summary": "Empty text provided; defaulted to neutral prior.",
                     "positive_contributors": [],
@@ -257,11 +283,30 @@ class SentimentService:
             }
 
         # Route to requested or active model
-        if target_model == "transformer_distilbert" and self.transformer_model is not None:
-            try:
-                return self.predict_transformer(cleaned)
-            except Exception as e:
-                logger.error(f"DistilBERT inference error: {e}. Falling back to baseline.")
+        if target_model == "transformer_distilbert":
+            if self.transformer_model is not None:
+                try:
+                    return self.predict_transformer(cleaned)
+                except Exception as e:
+                    logger.error(f"DistilBERT inference error: {e}. Falling back to baseline.")
+            else:
+                return {
+                    "sentiment": "unavailable",
+                    "confidence": 0.0,
+                    "probabilities": {"negative": 0.0, "neutral": 0.0, "positive": 0.0},
+                    "active_model": "transformer_distilbert",
+                    "explanation": {
+                        "method": "transformer_deep_representation",
+                        "available": False,
+                        "summary": (
+                            "Fine-tuned DistilBERT weights (~268 MB) are not deployed on this cloud instance to prevent out-of-memory crashes on free-tier 512 MB hosting. "
+                            "Please use Logistic Regression for live inference or execute DistilBERT in a high-memory/GPU environment."
+                        ),
+                        "positive_contributors": [],
+                        "negative_contributors": [],
+                        "disclaimer": "Model weights omitted to comply with memory constraints. Empirical test metrics are available on the Model Comparison page.",
+                    },
+                }
 
         return self.predict_baseline(cleaned, include_explanation=include_explanation)
 
