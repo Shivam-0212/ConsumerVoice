@@ -46,7 +46,14 @@ def get_dashboard_overview(db: Session = Depends(get_db)):
         .group_by(ReviewModel.cleaned_rate)
         .all()
     )
-    rate_map = {f"{int(r)} Star" if r == int(r) else f"{r} Star": cnt for r, cnt in sorted(rate_counts, key=lambda x: x[0] if x[0] else 0)}
+    rate_map = {}
+    for r, cnt in rate_counts:
+        try:
+            val = float(r)
+            key = f"{int(val)} Star" if val == int(val) else f"{val} Star"
+            rate_map[key] = cnt
+        except (ValueError, TypeError):
+            continue
 
     # Top products by feedback volume
     top_prods_query = (
@@ -57,7 +64,11 @@ def get_dashboard_overview(db: Session = Depends(get_db)):
         .all()
     )
     top_products = [
-        {"product_name": p[:55] + "..." if len(p) > 55 else p, "full_name": p, "count": cnt}
+        {
+            "product_name": (p[:55] + "..." if len(p) > 55 else p) if p else "General Consumer Item",
+            "full_name": p or "General Consumer Item",
+            "count": cnt,
+        }
         for p, cnt in top_prods_query
     ]
 

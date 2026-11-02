@@ -95,6 +95,12 @@ def ensure_database() -> bool:
     if TARGET_DB_PATH.exists() and TARGET_DB_PATH.stat().st_size > 5000:
         try:
             conn = sqlite3.connect(TARGET_DB_PATH)
+            # Sanitize any text cleaned_rate values to prevent type conversion errors
+            try:
+                conn.execute("UPDATE reviews SET cleaned_rate = CAST(rate AS REAL) WHERE typeof(cleaned_rate) = 'text'")
+                conn.commit()
+            except Exception:
+                pass
             count = conn.execute("SELECT count(*) FROM reviews").fetchone()[0]
             conn.close()
             if count > 0:
@@ -113,6 +119,11 @@ def ensure_database() -> bool:
                 shutil.copyfileobj(f_in, f_out)
             gz_temp.unlink(missing_ok=True)
             conn = sqlite3.connect(TARGET_DB_PATH)
+            try:
+                conn.execute("UPDATE reviews SET cleaned_rate = CAST(rate AS REAL) WHERE typeof(cleaned_rate) = 'text'")
+                conn.commit()
+            except Exception:
+                pass
             count = conn.execute("SELECT count(*) FROM reviews").fetchone()[0]
             conn.close()
             logger.info(f"Database restored successfully with {count:,} indexed records.")

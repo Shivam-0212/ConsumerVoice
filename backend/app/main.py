@@ -31,10 +31,7 @@ logger = logging.getLogger("consumervoice")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: ensures database tables exist and bootstraps production assets."""
-    logger.info("Initializing ConsumerVoice application schema...")
-    Base.metadata.create_all(bind=engine)
-
-    # In production cloud environments, restore baseline model and seed data if missing
+    # 1. Bootstrap baseline model and production database if missing in cloud environment
     try:
         from scripts.download_production_assets import ensure_baseline_model, ensure_database
         ensure_baseline_model()
@@ -43,6 +40,14 @@ async def lifespan(app: FastAPI):
         ensure_database()
     except Exception as e:
         logger.warning(f"Asset bootstrap notice: {e}")
+
+    # 2. Ensure SQLAlchemy tables exist with clean connection pool
+    try:
+        logger.info("Verifying ConsumerVoice application schema...")
+        engine.dispose()
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        logger.warning(f"Schema verification notice: {e}")
 
     yield
 

@@ -8,13 +8,13 @@ class ReviewItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     review_id: str
-    product_name: str
+    product_name: Optional[str] = "Unknown Product"
     product_price: Optional[str] = None
     rate: Optional[str] = None
-    cleaned_rate: Optional[float] = None
+    cleaned_rate: Optional[Any] = None
     review_text: Optional[str] = None
-    summary: str
-    normalized_sentiment: str
+    summary: Optional[str] = ""
+    normalized_sentiment: Optional[str] = "neutral"
     is_benchmark: bool = False
 
 
