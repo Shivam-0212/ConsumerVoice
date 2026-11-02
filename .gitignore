@@ -1,0 +1,64 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+build/
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+*.pid
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Large ML model artifacts
+*.safetensors
+*.joblib
+*.pth
+*.pt
+*.bin
+backend/saved_models/distilbert_sentiment/
+
+# Dataset files
+data/raw/*
+!data/raw/README.md
+data/processed/*
+!data/processed/README.md
+
+# Personal materials
+presentation_guide/
+presentation/
+screenshots/
+ConsumerVoice_Private/
+
+
+# Large ML model weights and artifacts
+*.safetensors
+*.joblib
+*.pt
+*.pth
+*.ckpt
+
+# Large datasets - keep locally
+data/processed/*.csv
+data/raw/*.csv
+

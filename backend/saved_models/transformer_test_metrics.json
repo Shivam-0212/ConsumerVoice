@@ -1,0 +1,71 @@
+{
+    "model_name": "distilbert-base-uncased",
+    "model_type": "fine_tuned_distilbert",
+    "accuracy": 0.91424529328545,
+    "macro_precision": 0.7522452792117716,
+    "macro_recall": 0.7650350355980869,
+    "macro_f1": 0.7584041913115868,
+    "weighted_f1": 0.915477614100502,
+    "training_time_seconds": 891.31,
+    "test_evaluation_time_seconds": 6.462647914886475,
+    "test_samples": 9189,
+    "best_checkpoint": "./results_distilbert/checkpoint-9190",
+    "best_validation_macro_f1": 0.7583212654960088,
+    "confusion_matrix": {
+        "labels": [
+            "negative",
+            "neutral",
+            "positive"
+        ],
+        "matrix": [
+            [
+                1603,
+                147,
+                83
+            ],
+            [
+                123,
+                228,
+                141
+            ],
+            [
+                139,
+                155,
+                6570
+            ]
+        ]
+    },
+    "classification_report": {
+        "negative": {
+            "precision": 0.8595174262734584,
+            "recall": 0.8745226404800873,
+            "f1-score": 0.866955110870741,
+            "support": 1833.0
+        },
+        "neutral": {
+            "precision": 0.43018867924528303,
+            "recall": 0.4634146341463415,
+            "f1-score": 0.4461839530332681,
+            "support": 492.0
+        },
+        "positive": {
+            "precision": 0.9670297321165734,
+            "recall": 0.9571678321678322,
+            "f1-score": 0.9620735100307513,
+            "support": 6864.0
+        },
+        "accuracy": 0.91424529328545,
+        "macro avg": {
+            "precision": 0.7522452792117716,
+            "recall": 0.7650350355980869,
+            "f1-score": 0.7584041913115868,
+            "support": 9189.0
+        },
+        "weighted avg": {
+            "precision": 0.9168397381430066,
+            "recall": 0.91424529328545,
+            "f1-score": 0.915477614100502,
+            "support": 9189.0
+        }
+    }
+}
