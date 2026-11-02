@@ -157,7 +157,7 @@ export default function ModelLab() {
 
           <div className="text-[11px] text-slate-400 mt-4 space-y-1">
             <div>&bull; Fast CPU inference (~0.01 ms / sample)</div>
-            <div>&bull; Supports direct algebraic feature attribution ($x_i \cdot \beta_k$)</div>
+            <div>&bull; Supports direct algebraic feature attribution (xᵢ · βₖ)</div>
           </div>
         </div>
 
