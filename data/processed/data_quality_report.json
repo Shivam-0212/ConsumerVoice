@@ -1,0 +1,90 @@
+{
+  "total_records": 205052,
+  "total_columns": 6,
+  "columns": [
+    "product_name",
+    "product_price",
+    "Rate",
+    "Review",
+    "Summary",
+    "Sentiment"
+  ],
+  "missing_values": {
+    "product_name": 0,
+    "product_price": 0,
+    "Rate": 0,
+    "Review": 24664,
+    "Summary": 11,
+    "Sentiment": 0
+  },
+  "exact_duplicate_rows": 34375,
+  "raw_sentiment_distribution": {
+    "positive": 166581,
+    "negative": 28232,
+    "neutral": 10239
+  },
+  "malformed_rate_count": 3,
+  "malformed_rate_samples": [
+    [
+      17299,
+      "Pigeon Favourite Electric Kettle??????(1.5 L, Silver, Black)"
+    ],
+    [
+      175895,
+      "Bajaj DX 2 L/W Dry Iron"
+    ],
+    [
+      175906,
+      "Nova Plus Amaze NI 10 1100 W Dry Iron?\u00c3\u0083\u00c2\u00bf?\u00c3\u0083\u00c2\u00bf(Grey & Turquoise)"
+    ]
+  ],
+  "raw_distinct_summaries": 92924,
+  "invalid_sentiment_count": 0,
+  "cleaned_total_rows": 205052,
+  "conflicting_summary_groups_count": 966,
+  "conflicting_rows_count": 82754,
+  "benchmark_deduplicated_rows": 91890,
+  "splits": {
+    "train_size": 73512,
+    "train_distribution": {
+      "positive": 54908,
+      "negative": 14662,
+      "neutral": 3942
+    },
+    "val_size": 9189,
+    "val_distribution": {
+      "positive": 6863,
+      "negative": 1833,
+      "neutral": 493
+    },
+    "test_size": 9189,
+    "test_distribution": {
+      "positive": 6864,
+      "negative": 1833,
+      "neutral": 492
+    }
+  },
+  "rating_sentiment_consistency": {
+    "negative": {
+      "1.0": 18793,
+      "2.0": 4707,
+      "3.0": 3023,
+      "4.0": 882,
+      "5.0": 826
+    },
+    "neutral": {
+      "1.0": 1233,
+      "2.0": 1050,
+      "3.0": 3660,
+      "4.0": 1982,
+      "5.0": 2314
+    },
+    "positive": {
+      "1.0": 1274,
+      "2.0": 734,
+      "3.0": 9916,
+      "4.0": 39030,
+      "5.0": 115625
+    }
+  }
+}
