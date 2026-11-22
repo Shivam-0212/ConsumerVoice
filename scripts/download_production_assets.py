@@ -27,14 +27,41 @@ BASELINE_URL = os.environ.get(
     "BASELINE_MODEL_URL",
     "https://github.com/Shivam-0212/ConsumerVoice/releases/download/v1.0.0/sentiment_baseline.joblib",
 )
-DB_GZ_URL = os.environ.get(
-    "DATABASE_ASSET_URL",
-    "https://github.com/Shivam-0212/ConsumerVoice/releases/download/v1.0.0/consumervoice.db.gz",
-)
+# Optional external database asset endpoint (empty by default; uses data/seed_sample.json)
+DB_GZ_URL = os.environ.get("DATABASE_ASSET_URL", "").strip()
 
 TARGET_BASELINE_PATH = ROOT_DIR / "backend" / "saved_models" / "sentiment_baseline.joblib"
-TARGET_DB_PATH = ROOT_DIR / "backend" / "consumervoice.db"
 SEED_SAMPLE_PATH = ROOT_DIR / "data" / "seed_sample.json"
+
+
+def get_target_db_path() -> Path:
+    """Resolve the SQLite database path matching FastAPI's configured DATABASE_URL."""
+    db_url = os.environ.get("DATABASE_URL", "").strip()
+    if not db_url:
+        try:
+            sys.path.insert(0, str(ROOT_DIR))
+            from backend.app.core.config import settings
+            db_url = settings.DATABASE_URL.strip()
+        except Exception:
+            pass
+
+    if db_url.startswith("sqlite"):
+        try:
+            from sqlalchemy.engine.url import make_url
+            parsed = make_url(db_url)
+            if parsed.database and parsed.database != ":memory:":
+                p = Path(parsed.database)
+                return p.resolve() if p.is_absolute() else (ROOT_DIR / p).resolve()
+        except Exception:
+            clean = db_url.split("sqlite:///")[-1]
+            if clean and clean != ":memory:":
+                p = Path(clean)
+                return p.resolve() if p.is_absolute() else (ROOT_DIR / p).resolve()
+
+    return (ROOT_DIR / "backend" / "consumervoice.db").resolve()
+
+
+TARGET_DB_PATH = get_target_db_path()
 
 
 def download_with_curl_or_urllib(url: str, dest_path: Path) -> bool:
@@ -42,9 +69,9 @@ def download_with_curl_or_urllib(url: str, dest_path: Path) -> bool:
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = dest_path.with_suffix(dest_path.suffix + ".tmp")
 
-    # 1. Try curl
+    # 1. Try curl (using -f / --fail so HTTP 4xx/5xx return non-zero exit codes)
     try:
-        cmd = ["curl", "-sSL", "--connect-timeout", "15", "--max-time", "120", url, "-o", str(temp_path)]
+        cmd = ["curl", "-sSLf", "--connect-timeout", "15", "--max-time", "120", url, "-o", str(temp_path)]
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode == 0 and temp_path.exists() and temp_path.stat().st_size > 500:
             temp_path.replace(dest_path)
@@ -90,11 +117,16 @@ def ensure_baseline_model() -> bool:
     return False
 
 
-def ensure_database() -> bool:
-    """Ensure consumervoice.db is present and populated with authentic reviews."""
-    if TARGET_DB_PATH.exists() and TARGET_DB_PATH.stat().st_size > 5000:
+def ensure_database(target_db_path: Path = None) -> bool:
+    """Ensure SQLite database is present and populated with authentic reviews.
+
+    If target_db_path is not specified, resolves dynamically via get_target_db_path().
+    """
+    target_path = target_db_path or get_target_db_path()
+
+    if target_path.exists() and target_path.stat().st_size > 5000:
         try:
-            conn = sqlite3.connect(TARGET_DB_PATH)
+            conn = sqlite3.connect(target_path)
             # Sanitize any text cleaned_rate values to prevent type conversion errors
             try:
                 conn.execute("UPDATE reviews SET cleaned_rate = CAST(rate AS REAL) WHERE typeof(cleaned_rate) = 'text'")
@@ -104,49 +136,88 @@ def ensure_database() -> bool:
             count = conn.execute("SELECT count(*) FROM reviews").fetchone()[0]
             conn.close()
             if count > 0:
-                logger.info(f"Database already populated with {count:,} reviews.")
+                logger.info(f"Database already populated at {target_path} with {count:,} reviews.")
                 return True
         except Exception:
             pass
 
-    # Try downloading compressed full database (50,000 records)
-    gz_temp = TARGET_DB_PATH.with_suffix(".db.gz")
-    logger.info(f"Fetching compressed 50,000-review database from {DB_GZ_URL}...")
-    if download_with_curl_or_urllib(DB_GZ_URL, gz_temp):
-        try:
-            logger.info(f"Decompressing {gz_temp} to {TARGET_DB_PATH}...")
-            with gzip.open(gz_temp, "rb") as f_in, open(TARGET_DB_PATH, "wb") as f_out:
-                shutil.copyfileobj(f_in, f_out)
-            gz_temp.unlink(missing_ok=True)
-            conn = sqlite3.connect(TARGET_DB_PATH)
+    # Optional: If DATABASE_ASSET_URL is explicitly configured, download external database
+    db_gz_url = os.environ.get("DATABASE_ASSET_URL", DB_GZ_URL).strip()
+    if db_gz_url:
+        gz_temp = target_path.with_suffix(".db.gz")
+        temp_extracted = target_path.with_suffix(".decompressed.tmp")
+        logger.info(f"Fetching compressed database from configured DATABASE_ASSET_URL: {db_gz_url}...")
+        if download_with_curl_or_urllib(db_gz_url, gz_temp):
             try:
-                conn.execute("UPDATE reviews SET cleaned_rate = CAST(rate AS REAL) WHERE typeof(cleaned_rate) = 'text'")
-                conn.commit()
-            except Exception:
-                pass
-            count = conn.execute("SELECT count(*) FROM reviews").fetchone()[0]
-            conn.close()
-            logger.info(f"Database restored successfully with {count:,} indexed records.")
-            return True
-        except Exception as e:
-            logger.warning(f"Decompression of database failed: {e}")
-            gz_temp.unlink(missing_ok=True)
+                logger.info(f"Decompressing {gz_temp} to staging file {temp_extracted}...")
+                with gzip.open(gz_temp, "rb") as f_in, open(temp_extracted, "wb") as f_out:
+                    shutil.copyfileobj(f_in, f_out)
 
-    # Fallback: Seed from seed_sample.json if present
+                # Validate decompressed SQLite database integrity before replacing target
+                conn = sqlite3.connect(temp_extracted)
+                integrity = conn.execute("PRAGMA integrity_check;").fetchone()
+                if not integrity or integrity[0] != "ok":
+                    conn.close()
+                    raise ValueError(f"SQLite integrity check failed: {integrity}")
+
+                try:
+                    conn.execute("UPDATE reviews SET cleaned_rate = CAST(rate AS REAL) WHERE typeof(cleaned_rate) = 'text'")
+                    conn.commit()
+                except Exception:
+                    pass
+
+                count = conn.execute("SELECT count(*) FROM reviews").fetchone()[0]
+                conn.close()
+
+                if count == 0:
+                    raise ValueError("Decompressed database contains 0 reviews.")
+
+                # Atomic replacement of target path with verified database
+                temp_extracted.replace(target_path)
+                gz_temp.unlink(missing_ok=True)
+                logger.info(f"Database restored successfully at {target_path} with {count:,} indexed records.")
+                return True
+            except Exception as e:
+                logger.warning(f"Validation or decompression of remote database failed: {e}. Falling back to embedded seed dataset.")
+                temp_extracted.unlink(missing_ok=True)
+                gz_temp.unlink(missing_ok=True)
+        else:
+            logger.warning(f"Failed to download database from {db_gz_url}. Falling back to embedded seed dataset.")
+            gz_temp.unlink(missing_ok=True)
+    else:
+        logger.info("No external DATABASE_ASSET_URL configured. Initializing from embedded seed dataset.")
+
+    # Initialize / Seed from seed_sample.json
     if SEED_SAMPLE_PATH.exists():
-        logger.info("Initializing fallback database from data/seed_sample.json...")
+        logger.info(f"Initializing database at {target_path} from data/seed_sample.json...")
         try:
-            # Initialize schema via SQLAlchemy
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # If target_path exists but is invalid or empty, remove it before initializing
+            if target_path.exists():
+                try:
+                    test_conn = sqlite3.connect(target_path)
+                    test_res = test_conn.execute("PRAGMA integrity_check;").fetchone()
+                    test_conn.close()
+                    if not test_res or test_res[0] != "ok":
+                        target_path.unlink(missing_ok=True)
+                except Exception:
+                    target_path.unlink(missing_ok=True)
+
+            # Initialize schema directly on target_path
             sys.path.insert(0, str(ROOT_DIR))
-            from backend.app.database.session import Base, engine
+            from sqlalchemy import create_engine
+            from backend.app.database.session import Base
             import backend.app.models.entities  # register models
 
-            Base.metadata.create_all(bind=engine)
+            db_engine = create_engine(f"sqlite:///{target_path}")
+            Base.metadata.create_all(bind=db_engine)
+            db_engine.dispose()
 
             with open(SEED_SAMPLE_PATH, "r", encoding="utf-8") as f:
                 sample_data = json.load(f)
 
-            conn = sqlite3.connect(TARGET_DB_PATH)
+            conn = sqlite3.connect(target_path)
             cursor = conn.cursor()
             insert_sql = """
             INSERT OR IGNORE INTO reviews (
@@ -173,10 +244,15 @@ def ensure_database() -> bool:
             conn.commit()
             count = cursor.execute("SELECT count(*) FROM reviews").fetchone()[0]
             conn.close()
-            logger.info(f"Fallback database seeded with {count:,} authentic Flipkart reviews.")
+            logger.info(f"Database seeded successfully at {target_path} with {count:,} authentic Flipkart reviews.")
             return True
         except Exception as e:
             logger.error(f"Fallback seeding failed: {e}")
+            if target_path.exists():
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     return False
 

@@ -10,14 +10,41 @@
 
 ---
 
-## 🌐 Live Production Deployment
+## 🚀 Production Deployment Architecture
 
-| Service Component | Host Platform | Production URL |
-| :--- | :--- | :--- |
-| **Frontend Web Application** | **Vercel** | [https://consumer-voice-rose.vercel.app](https://consumer-voice-rose.vercel.app) |
-| **Backend API Service** | **Render** | [https://consumervoice-api.onrender.com](https://consumervoice-api.onrender.com) |
-| **Interactive API Docs (Swagger)** | **Render** | [https://consumervoice-api.onrender.com/docs](https://consumervoice-api.onrender.com/docs) |
-| **Backend Health Endpoint** | **Render** | [https://consumervoice-api.onrender.com/api/health](https://consumervoice-api.onrender.com/api/health) |
+ConsumerVoice is designed for a decoupled cloud deployment using **Vercel** for frontend static delivery and **Render** for backend API services:
+
+| Component | Platform | Role | Target URL / Placeholder | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **Frontend Web Application** | **Vercel** | React 18 + Vite SPA | `https://<your-project>.vercel.app` | *Configured for deployment* |
+| **Backend API Service** | **Render** | FastAPI + Uvicorn ASGI | `https://<your-service>.onrender.com` | *Configured for deployment* |
+| **Interactive API Docs** | **Render** | Swagger / OpenAPI UI | `https://<your-service>.onrender.com/docs` | *Configured for deployment* |
+| **Health Check Endpoint** | **Render** | System diagnostic probe | `https://<your-service>.onrender.com/api/health` | *Configured for deployment* |
+
+### Architecture Overview
+
+```mermaid
+flowchart LR
+    Browser["User Browser"]
+    VercelEdge["Vercel Edge Network\n(React 18 + Vite SPA)"]
+    RenderBackend["Render Web Service\n(FastAPI + Uvicorn)"]
+    GHRelease["GitHub Release v1.0.0\n(sentiment_baseline.joblib)"]
+    SQLite["SQLite Database\n(Seeded from seed_sample.json)"]
+
+    Browser -->|1. Load SPA UI| VercelEdge
+    Browser -->|2. API Requests /api/*| VercelEdge
+    VercelEdge -->|3. Reverse Proxy (frontend/vercel.json)| RenderBackend
+    RenderBackend -->|4. CORS headers allow *.vercel.app| Browser
+    RenderBackend -->|5. Query Reviews & Insights| SQLite
+    RenderBackend -.->|6. Auto-download on boot| GHRelease
+```
+
+- **Frontend Hosting (Vercel)**: Deploys from `frontend/` as a static SPA bundle. Because the Vercel project's Root Directory is set to `frontend`, Vercel reads `frontend/vercel.json`, which applies client-side SPA routing (`/(.*) -> /index.html`) and an automated reverse proxy forwarding `/api/:path*` to the Render backend service. (A matching `vercel.json` is also placed at the repository root to support deployments configured without a custom root directory).
+- **Backend Hosting (Render)**: Deploys from the repository root via `./render_build.sh` and `uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT`. Binds dynamically to `0.0.0.0:$PORT` with native CORS middleware configured to authorize requests from all `https://*.vercel.app` origins.
+- **Production ML Baseline (Live Inference)**: High-throughput TF-IDF + Balanced Logistic Regression model (`sentiment_baseline.joblib`, 2.7 MB, ~15 MB RAM, sub-1ms CPU latency) serving live sentiment predictions, calibrated probabilities, and linear feature attribution.
+- **DistilBERT Offline Evaluation**: Fine-tuned DistilBERT weights (~268 MB) require > 550 MB RAM, exceeding the 512 MB physical ceiling of Render Free Tier (which triggers Linux Out-Of-Memory exit code 137). In compliance with architectural specifications, live transformer inference is omitted on lightweight free-tier cloud instances while empirical benchmark results (91.42% accuracy, 0.7584 Macro F1) are verified and displayed in the Model Comparison dashboard. Live transformer serving is supported on dedicated GPU or 1GB+ RAM instances.
+- **Database Initialization**: On startup, if no external database asset is provided, `scripts/download_production_assets.py` automatically initializes and seeds `backend/consumervoice.db` in **~200 ms** using the committed `data/seed_sample.json` (200 authentic Flipkart reviews covering all defect categories).
+- **Ephemeral Storage on Render Free**: Container storage on Render Free tier is ephemeral and resets on container sleep or redeployment. Any ad-hoc prediction history generated during a session resets cleanly upon container reboot, while the core review corpus is re-seeded automatically on boot.
 
 ---
 
@@ -44,7 +71,7 @@
 7. **SaaS Analytics Web Application**:
    - 4 primary focused pages: **Dashboard**, **Review Explorer**, **Analyze Feedback**, and **Model Comparison**.
    - Built with React 18, Vite, Tailwind CSS, Lucide icons, and Recharts.
-   - Database of 50,000 real Flipkart reviews persisted locally in SQLite.
+   - Database of authentic Flipkart customer reviews persisted in SQLite (seeded with 200 benchmark reviews for lightweight cloud deployment; expandable to 50,000 locally).
 
 ---
 
@@ -151,7 +178,82 @@ cd frontend && npm run dev
 
 ---
 
-## 6. Live Demonstration Scenario
+## 6. Cloud Deployment Guide (Vercel & Render)
+
+ConsumerVoice is fully configured for free-tier cloud deployment using **Vercel** for frontend hosting and **Render** for the backend API (subject to platform free-tier quotas and resource limits).
+
+### 6.1 Pre-Deployment: Release v1.0.0 Model Asset Setup
+The backend's cloud bootstrap script (`scripts/download_production_assets.py`) automatically retrieves the production model weights (`sentiment_baseline.joblib`, 2.7 MB) from GitHub Release `v1.0.0` during build and container boot.
+
+> **Important Note:** Release `v1.0.0` does not exist by default on a newly initialized repository. Before deploying to Render, create Release `v1.0.0` and attach `sentiment_baseline.joblib` using the GitHub CLI or GitHub web interface:
+
+```bash
+# Publish Release v1.0.0 with the baseline model weights
+# (Run from project root /Users/shivamrai/Desktop/ConsumerVoice):
+gh release create v1.0.0 \
+  ConsumerVoice_Private/trained_models/sentiment_baseline.joblib \
+  --repo Shivam-0212/ConsumerVoice \
+  --title "ConsumerVoice v1.0.0 Baseline Model" \
+  --notes "Production TF-IDF + Logistic Regression baseline weights (sentiment_baseline.joblib)."
+```
+*(Alternatively, if running from inside `ConsumerVoice_GitHub`, pass `backend/saved_models/sentiment_baseline.joblib`).*
+
+*(If this asset is not uploaded, the backend will still boot and serve API requests using the embedded 200-review seed database, but live sentiment analysis will return neutral prior probabilities with a configuration notice until the asset is attached).*
+
+---
+
+### 6.2 Backend Deployment on Render
+
+1. Create a **New Web Service** on [Render](https://dashboard.render.com).
+2. Connect your GitHub repository (`Shivam-0212/ConsumerVoice`).
+3. Configure service parameters:
+   - **Name**: `consumervoice-api` (or preferred service name)
+   - **Region**: Any (e.g., *Oregon, US-West* or *Frankfurt, EU*)
+   - **Branch**: `main`
+   - **Root Directory**: *(leave blank — repository root)*
+   - **Runtime**: `Python 3`
+   - **Build Command**: `./render_build.sh`
+   - **Start Command**: `uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT`
+   - **Instance Type**: `Free`
+4. Expand **Advanced** and set:
+   - **Health Check Path**: `/api/health`
+5. Under **Environment Variables**, add:
+   - `ENVIRONMENT`: `production` *(Recommended: enables production optimizations)*
+   - `DATABASE_URL`: `sqlite:///backend/consumervoice.db` *(Optional: the backend automatically defaults to `sqlite:///<ROOT_DIR>/backend/consumervoice.db` if unset)*
+   - `DATABASE_ASSET_URL`: *(Optional: URL to an external compressed `.db.gz` database. If omitted, the service immediately seeds from `data/seed_sample.json` without attempting remote downloads)*
+   - `GEMINI_API_KEY`: *(Optional: your Google Gemini API key for abstractive support response generation; if omitted, the system falls back to the built-in template response generator)*
+6. Click **Create Web Service**.
+
+---
+
+### 6.3 Frontend Deployment on Vercel
+
+1. Create a **New Project** on [Vercel](https://vercel.com).
+2. Import the `ConsumerVoice` GitHub repository.
+3. Configure build settings:
+   - **Framework Preset**: `Vite`
+   - **Root Directory**: Click **Edit** and choose `frontend` *(Vercel will detect `frontend/vercel.json` for SPA routing and API proxying)*
+   - **Build Command**: `npm run build` *(default)*
+   - **Output Directory**: `dist` *(default)*
+   - **Install Command**: `npm install` *(default)*
+4. Under **Environment Variables**, add:
+   - `VITE_API_BASE_URL`: `https://<your-render-service>.onrender.com/api`
+     *(Configures the frontend API client with your actual Render backend endpoint; trailing slashes are stripped automatically. If omitted, the client defaults to `/api`, which is proxied by `frontend/vercel.json`'s rewrite rule).*
+5. Click **Deploy**.
+
+---
+
+### 6.4 Production Runtime Behavior
+
+- **Database Auto-Seeding**: Render free containers operate on an ephemeral filesystem. On container startup, `scripts/download_production_assets.py` checks for `backend/consumervoice.db`. When `DATABASE_ASSET_URL` is omitted, it immediately initializes and seeds 200 authentic Flipkart benchmark reviews from `data/seed_sample.json` in **~200 ms** with zero remote download delay.
+- **Ephemeral Session Persistence**: Ad-hoc query logs and visitor-generated summaries persist while the container is awake. If the container sleeps after 15 minutes of inactivity or restarts on redeployment, session history resets to the clean 200-review benchmark state.
+- **Model Execution Distinction**:
+  - **Baseline Model (Live Serving)**: The TF-IDF + Balanced Logistic Regression pipeline executes directly in memory on Render Free (~15 MB RAM, sub-1ms CPU latency). It powers live sentiment classification, confidence scores, 3-class probability meters, and algebraic linear feature attributions ($\text{TF-IDF} \times \beta$) for positive and negative token contributors.
+  - **DistilBERT Transformer (Offline Evaluation)**: Fine-tuned DistilBERT weights (~268 MB) achieve 91.42% test accuracy and 0.7584 Macro F1, but inference requires > 550 MB RAM, exceeding Render's 512 MB free tier ceiling. To prevent container termination (Linux OOM exit code 137), live transformer inference is omitted on free cloud instances. DistilBERT is provided for offline evaluation, GPU fine-tuning (`notebooks/ConsumerVoice_DistilBERT_Finetuning.ipynb`), and benchmark comparison in the Model Comparison dashboard, which renders its genuine test evaluation metrics and confusion matrices loaded from `model_evaluation.json`.
+
+---
+
+## 7. Live Demonstration Scenario
 
 Navigate to **Analyze Feedback** (`/analyze`) and test the multi-task pipeline:
 
@@ -174,7 +276,7 @@ Navigate to **Analyze Feedback** (`/analyze`) and test the multi-task pipeline:
 
 ---
 
-## 7. Repository Structure
+## 8. Repository Structure
 
 ```text
 ConsumerVoice_GitHub/
@@ -241,8 +343,11 @@ ConsumerVoice_GitHub/
 
 ---
 
-## 8. Limitations & Scope
+## 9. Limitations & Scope
 
 1. **Temporal Scope**: The Flipkart dataset lacks timestamp metadata; temporal trend forecasting is not supported.
 2. **Neutral Class Density**: Neutral feedback accounts for only 4.9% of the dataset, resulting in lower neutral F1 (0.446) compared to positive (0.957) and negative (0.875).
 3. **Evidence-Based Screening**: The hallucination detector audits claims against explicit source feedback and provided policies. It does not certify external real-world physical facts not documented in the premise texts.
+4. **DistilBERT Cloud Memory Boundary**: Fine-tuned DistilBERT inference requires > 550 MB RAM. To prevent Out-Of-Memory (OOM exit code 137) termination on the 512 MB Render Free tier, live transformer inference is omitted on free cloud instances, while empirical benchmark metrics (91.42% accuracy, 0.7584 Macro F1) are verified and rendered in the Model Comparison studio. Full GPU inference is supported locally or on paid instances.
+5. **Ephemeral Storage on Render Free**: Free-tier web services on Render operate on ephemeral filesystems. The SQLite database automatically re-seeds 200 authentic benchmark reviews on startup, while visitor-generated query logs reset upon container reboot.
+6. **Free-Tier Cold Starts**: Free-tier containers on Render enter sleep mode after 15 minutes of inactivity; the initial wake-up request may require 30–50 seconds before responding with sub-10ms latency.
