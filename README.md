@@ -31,12 +31,12 @@ flowchart LR
     GHRelease["GitHub Release v1.0.0\n(sentiment_baseline.joblib)"]
     SQLite["SQLite Database\n(Seeded from seed_sample.json)"]
 
-    Browser -->|1. Load SPA UI| VercelEdge
-    Browser -->|2. API Requests /api/*| VercelEdge
-    VercelEdge -->|3. Reverse Proxy (frontend/vercel.json)| RenderBackend
-    RenderBackend -->|4. CORS headers allow *.vercel.app| Browser
-    RenderBackend -->|5. Query Reviews & Insights| SQLite
-    RenderBackend -.->|6. Auto-download on boot| GHRelease
+    Browser -->|"1. Load SPA UI"| VercelEdge
+    Browser -->|"2. API Requests /api/*"| VercelEdge
+    VercelEdge -->|"3. Reverse Proxy (frontend/vercel.json)"| RenderBackend
+    RenderBackend -->|"4. CORS headers allow *.vercel.app"| Browser
+    RenderBackend -->|"5. Query Reviews & Insights"| SQLite
+    RenderBackend -.->|"6. Auto-download on boot"| GHRelease
 ```
 
 - **Frontend Hosting (Vercel)**: Deploys from `frontend/` as a static SPA bundle. Because the Vercel project's Root Directory is set to `frontend`, Vercel reads `frontend/vercel.json`, which applies client-side SPA routing (`/(.*) -> /index.html`) and an automated reverse proxy forwarding `/api/:path*` to the Render backend service. (A matching `vercel.json` is also placed at the repository root to support deployments configured without a custom root directory).
